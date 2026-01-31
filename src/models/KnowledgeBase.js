@@ -1,6 +1,8 @@
 const { DataTypes } = require('sequelize');
-const sequelize = require('../config/database');
+//const sequelize = require('../config/database');
 
+
+module.exports = (sequelize) =>{
 const KnowledgeBase = sequelize.define('KnowledgeBase', {
   id: {
     type: DataTypes.UUID,
@@ -92,4 +94,24 @@ const KnowledgeBase = sequelize.define('KnowledgeBase', {
   ],
 });
 
-module.exports = KnowledgeBase;
+// // Stores website content
+// {
+//   id: UUID,
+//   title: String,
+//   content: Text,
+//   url: String (unique),
+//   content_type: Enum,
+//   category: String,
+//   summary: Text,
+//   embedding_id: String,
+//   last_scraped_at: Date,
+//   content_hash: String,
+//   metadata: JSONB,
+//   is_active: Boolean,
+//   access_count: Integer
+// }
+
+return KnowledgeBase;
+
+};
+//module.exports = KnowledgeBase;
