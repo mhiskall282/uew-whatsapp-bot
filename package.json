@@ -1,0 +1,41 @@
+{
+  "name": "uew-whatsapp-bot",
+  "version": "1.0.0",
+  "description": "This project is a **WhatsApp-based AI assistant** designed to help students (especially freshers) navigate the **University of Education, Winneba (UEW)** campus, find locations, access campus information, and receive real-time guidance directly via WhatsApp.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mhiskall282/uew-whatsapp-bot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/mhiskall282/uew-whatsapp-bot/issues"
+  },
+  "homepage": "https://github.com/mhiskall282/uew-whatsapp-bot#readme",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@pinecone-database/pinecone": "^6.1.4",
+    "axios": "^1.13.4",
+    "cheerio": "^1.2.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "ioredis": "^5.9.2",
+    "joi": "^18.0.2",
+    "node-cron": "^4.2.1",
+    "pg": "^8.18.0",
+    "sequelize": "^6.37.7",
+    "uuid": "^13.0.0",
+    "winston": "^3.19.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}
