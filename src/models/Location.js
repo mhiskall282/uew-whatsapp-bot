@@ -1,131 +1,130 @@
-// src/models/Location.js
-const { DataTypes, Op } = require("sequelize");
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
 
-module.exports = (sequelize) => {
-  const Location = sequelize.define(
-    "Location",
+const Location = sequelize.define('Location', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
+  name: {
+    type: DataTypes.STRING(200),
+    allowNull: false,
+    comment: 'Official name of the location',
+  },
+  aliases: {
+    type: DataTypes.ARRAY(DataTypes.STRING),
+    defaultValue: [],
+    allowNull: false,
+    comment: 'Alternative names students might use',
+  },
+  type: {
+    type: DataTypes.ENUM(
+      'hall',
+      'department',
+      'lecture_hall',
+      'office',
+      'library',
+      'cafeteria',
+      'hostel',
+      'sports',
+      'gate',
+      'landmark',
+      'other'
+    ),
+    allowNull: false,
+  },
+  campus: {
+    type: DataTypes.ENUM('central', 'north', 'south', 'ajumako'),
+    allowNull: false,
+    comment: 'Which campus the location belongs to',
+  },
+  latitude: {
+    type: DataTypes.DECIMAL(10, 8),
+    allowNull: false,
+    validate: {
+      min: -90,
+      max: 90,
+    },
+  },
+  longitude: {
+    type: DataTypes.DECIMAL(11, 8),
+    allowNull: false,
+    validate: {
+      min: -180,
+      max: 180,
+    },
+  },
+  description: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Brief description of the location',
+  },
+  landmarks: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Nearby landmarks for easier navigation',
+  },
+  opening_hours: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+  },
+  is_active: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    allowNull: false,
+  },
+}, {
+  tableName: 'locations',
+  indexes: [
     {
-      id: {
-        type: DataTypes.UUID,
-        defaultValue: DataTypes.UUIDV4,
-        primaryKey: true,
-      },
-
-      name: {
-        type: DataTypes.STRING(200),
-        allowNull: false,
-        unique: true,
-      },
-
-      aliases: {
-        // Postgres supports ARRAY(TEXT)
-        type: DataTypes.ARRAY(DataTypes.TEXT),
-        allowNull: false,
-        defaultValue: [],
-      },
-
-      type: {
-        type: DataTypes.ENUM(
-          "hall",
-          "library",
-          "office",
-          "department",
-          "hostel",
-          "cafeteria",
-          "gate",
-          "landmark",
-          "other"
-        ),
-        allowNull: false,
-        defaultValue: "other",
-      },
-
-      campus: {
-        type: DataTypes.ENUM("central", "north", "south", "ajumako", "other"),
-        allowNull: false,
-        defaultValue: "central",
-      },
-
-      latitude: {
-        type: DataTypes.DECIMAL(10, 7),
-        allowNull: true,
-      },
-
-      longitude: {
-        type: DataTypes.DECIMAL(10, 7),
-        allowNull: true,
-      },
-
-      description: {
-        type: DataTypes.TEXT,
-        allowNull: true,
-      },
-
-      landmarks: {
-        type: DataTypes.TEXT,
-        allowNull: true,
-      },
-
-      opening_hours: {
-        type: DataTypes.STRING(200),
-        allowNull: true,
-      },
-
-      is_active: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-        defaultValue: true,
-      },
+      fields: ['name'],
     },
     {
-      tableName: "locations",
-      underscored: true,
-      timestamps: true,
-      indexes: [{ fields: ["name"] }, { fields: ["campus"] }, { fields: ["type"] }, { fields: ["is_active"] }],
-    }
-  );
+      fields: ['type'],
+    },
+    {
+      fields: ['campus'],
+    },
+    {
+      fields: ['is_active'],
+    },
+    {
+      type: 'GIN',
+      fields: ['aliases'],
+    },
+  ],
+});
 
-  // ✅ Instance method
-  Location.prototype.getGoogleMapsUrl = function () {
-    if (this.latitude == null || this.longitude == null) return null;
-    return `https://www.google.com/maps?q=${this.latitude},${this.longitude}`;
-  };
-
-  // ✅ Static method: search by name or alias (case-insensitive)
-  Location.findByNameOrAlias = async function (searchTerm) {
-    const term = (searchTerm || "").trim().toLowerCase();
-    if (!term) return null;
-
-    // 1) Try name match
-    let loc = await Location.findOne({
-      where: sequelize.where(
-        sequelize.fn("lower", sequelize.col("name")),
-        { [Op.like]: `%${term}%` }
-      ),
-    });
-    if (loc) return loc;
-
-    // 2) Try aliases match (ARRAY)
-    // This checks if ANY alias matches the term (exact-ish)
-    loc = await Location.findOne({
-      where: {
-        aliases: {
-          [Op.overlap]: [term],
-        },
-      },
-    });
-    if (loc) return loc;
-
-    // 3) Fallback: scan aliases with LIKE via unnest (more flexible)
-    // Works on Postgres
-    loc = await Location.findOne({
-      where: sequelize.literal(
-        `EXISTS (SELECT 1 FROM unnest("aliases") a WHERE lower(a) LIKE '%${term.replace(/'/g, "''")}%')`
-      ),
-    });
-
-    return loc;
-  };
-
-  return Location;
+// Instance method to generate Google Maps link
+Location.prototype.getGoogleMapsUrl = function() {
+  return `https://www.google.com/maps/search/?api=1&query=${this.latitude},${this.longitude}`;
 };
+
+// Static method to find location by name or alias
+Location.findByNameOrAlias = async function(searchTerm) {
+  const normalizedSearch = searchTerm.toLowerCase().trim();
+  
+  const { Op } = require('sequelize');
+  
+  return await Location.findAll({
+    where: {
+      is_active: true,
+      [Op.or]: [
+        sequelize.where(
+          sequelize.fn('LOWER', sequelize.col('name')),
+          Op.like,
+          `%${normalizedSearch}%`
+        ),
+        sequelize.where(
+          sequelize.fn('array_to_string', sequelize.col('aliases'), ' '),
+          Op.iLike,
+          `%${normalizedSearch}%`
+        ),
+      ],
+    },
+    limit: 5,
+  });
+};
+
+module.exports = Location;

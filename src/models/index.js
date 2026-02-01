@@ -1,16 +1,9 @@
 const sequelize = require('../config/database');
-// const User = require('./User');
-// const Conversation = require('./Conversation');
-// const Feedback = require('./Feedback');
-// const Location = require('./Location');
-// const KnowledgeBase = require('./KnowledgeBase');
-
-// ✅ Initialize models (each file should export: (sequelize) => Model)
-const User = require("./User")(sequelize);
-const Conversation = require("./Conversation")(sequelize);
-const Feedback = require("./Feedback")(sequelize);
-const Location = require("./Location")(sequelize);
-const KnowledgeBase = require("./KnowledgeBase")(sequelize);
+const User = require('./User');
+const Conversation = require('./Conversation');
+const Feedback = require('./Feedback');
+const Location = require('./Location');
+const KnowledgeBase = require('./KnowledgeBase');
 
 // Define associations/relationships
 

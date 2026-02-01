@@ -1,32 +1,27 @@
 const cron = require('node-cron');
 const logger = require('../utils/logger');
-const WebsiteScraper = require('../scripts/scrapeWebsite');
 
 const jobs = [];
 
-// Daily website scraping at 2 AM
+// Example: Daily website scraping at 2 AM
+// Uncomment when you have the scraper ready
+/*
 const scraperJob = cron.schedule('0 2 * * *', async () => {
   logger.info('Running scheduled website scraping...');
-  const scraper = new WebsiteScraper();
-  try {
-    await scraper.scrapeAndStore();
-    logger.info('Scheduled scraping completed');
-  } catch (error) {
-    logger.error('Scheduled scraping failed', { error: error.message });
-  }
+  // Add scraper logic here
 }, {
   scheduled: false,
 });
-
 jobs.push(scraperJob);
+*/
 
 module.exports = {
   startAll: () => {
     jobs.forEach(job => job.start());
-    logger.info('Cron jobs started');
+    logger.info(`Started ${jobs.length} cron jobs`);
   },
   stopAll: () => {
     jobs.forEach(job => job.stop());
-    logger.info('Cron jobs stopped');
+    logger.info(`Stopped ${jobs.length} cron jobs`);
   },
 };

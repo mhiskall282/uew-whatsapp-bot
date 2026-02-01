@@ -5,7 +5,7 @@ class WhatsAppService {
   constructor() {
     this.apiToken = process.env.WHATSAPP_API_TOKEN;
     this.phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    this.apiUrl = `https://graph.facebook.com/v22.0/${this.phoneNumberId}/messages`;
+    this.apiUrl = `https://graph.facebook.com/v24.0/${this.phoneNumberId}/messages`;
   }
 
   /**
@@ -153,31 +153,43 @@ class WhatsAppService {
    * Mark message as read
    * @param {string} messageId 
    */
-  async markAsRead(messageId) {
-    try {
-      await axios.post(
-        this.apiUrl,
-        {
-          messaging_product: 'whatsapp',
-          status: 'read',
-          message_id: messageId,
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${this.apiToken}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      logger.debug('Message marked as read', { messageId });
-    } catch (error) {
-      logger.error('Failed to mark message as read', {
-        messageId,
-        error: error.message,
-      });
-    }
+async markAsRead(messageId) {
+  // Skip during Postman/manual tests
+  if (
+    !messageId ||
+    messageId === "wamid.TEST_MESSAGE_ID" ||
+    messageId.includes("TEST")
+  ) {
+    logger.debug("Skipping markAsRead for test message", { messageId });
+    return;
   }
+
+  try {
+    await axios.post(
+      this.apiUrl,
+      {
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: messageId,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${this.apiToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    logger.debug("Message marked as read", { messageId });
+  } catch (error) {
+    logger.error("Failed to mark message as read", {
+      messageId,
+      status: error.response?.status,
+      data: error.response?.data,
+      error: error.message,
+    });
+  }
+}
 }
 
 module.exports = new WhatsAppService();

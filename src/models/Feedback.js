@@ -1,70 +1,78 @@
-// src/models/Feedback.js
-const { DataTypes } = require("sequelize");
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
 
-module.exports = (sequelize) => {
-  const Feedback = sequelize.define(
-    "Feedback",
+const Feedback = sequelize.define('Feedback', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
+  user_id: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'users',
+      key: 'id',
+    },
+    onDelete: 'CASCADE',
+  },
+  conversation_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'conversations',
+      key: 'id',
+    },
+    onDelete: 'SET NULL',
+  },
+  rating: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    validate: {
+      min: 1,
+      max: 5,
+    },
+    comment: 'Rating from 1-5 stars',
+  },
+  comment: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  feedback_type: {
+    type: DataTypes.ENUM('general', 'navigation', 'information', 'website', 'bug'),
+    defaultValue: 'general',
+    allowNull: false,
+  },
+  credits_awarded: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    allowNull: false,
+  },
+  is_processed: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+    comment: 'Whether credits have been awarded',
+  },
+}, {
+  tableName: 'feedback',
+  indexes: [
     {
-      id: {
-        type: DataTypes.UUID,
-        defaultValue: DataTypes.UUIDV4,
-        primaryKey: true,
-      },
-
-      user_id: {
-        type: DataTypes.UUID,
-        allowNull: false,
-      },
-
-      conversation_id: {
-        type: DataTypes.UUID,
-        allowNull: true,
-      },
-
-      rating: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-        validate: {
-          min: 1,
-          max: 5,
-        },
-      },
-
-      comment: {
-        type: DataTypes.TEXT,
-        allowNull: true,
-      },
-
-      feedback_type: {
-        type: DataTypes.ENUM("general", "navigation", "faq", "bug", "feature"),
-        allowNull: false,
-        defaultValue: "general",
-      },
-
-      credits_awarded: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        defaultValue: 0,
-      },
-
-      is_processed: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-        defaultValue: false,
-      },
+      fields: ['user_id'],
     },
     {
-      tableName: "feedback",
-      underscored: true,
-      timestamps: true,
-      indexes: [
-        { fields: ["user_id"] },
-        { fields: ["conversation_id"] },
-        { fields: ["rating"] },
-        { fields: ["created_at"] },
-      ],
-    }
-  );
+      fields: ['rating'],
+    },
+    {
+      fields: ['created_at'],
+    },
+    {
+      fields: ['is_processed'],
+    },
+    {
+      fields: ['feedback_type'],
+    },
+  ],
+});
 
-  return Feedback;
-};
+module.exports = Feedback;
