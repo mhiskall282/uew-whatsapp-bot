@@ -10,7 +10,7 @@ const redis = require('./config/redis');
 const cron = require('./jobs/cron');
 
 const app = express();
-const PORT = process.env.PORT || 4000; // Render uses PORT env var
+const PORT = process.env.PORT || 4000;
 
 // ==============================================
 // SECURITY & PROXY SETTINGS (Critical for Render)
@@ -19,10 +19,10 @@ app.set('trust proxy', 1); // Trust Render's proxy → fixes X-Forwarded-For rat
 
 app.use(helmet());
 
-// Rate limiting - apply globally or per-route
+// Rate limiting
 const globalLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // higher for general routes
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
   message: { error: 'Too many requests, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -34,13 +34,13 @@ const webhookLimiter = rateLimit({
   message: { error: 'Webhook rate limit exceeded' },
 });
 
-app.use(globalLimiter); // Global default
-app.use('/webhook', webhookLimiter); // Tighter for webhook
+app.use(globalLimiter);
+app.use('/webhook', webhookLimiter);
 
 // ==============================================
 // BODY PARSING
 // ==============================================
-app.use(express.json({ limit: '10mb' })); // WhatsApp payloads can be large
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ==============================================
@@ -59,7 +59,6 @@ app.use((req, res, next) => {
 // ROUTES
 // ==============================================
 
-// Health check (simple)
 app.get('/', (req, res) => {
   res.json({
     status: 'ok',
@@ -70,7 +69,6 @@ app.get('/', (req, res) => {
   });
 });
 
-// Detailed health check
 app.get('/health', async (req, res) => {
   const health = {
     status: 'ok',
@@ -81,30 +79,14 @@ app.get('/health', async (req, res) => {
     redisConnected: false,
   };
 
-  try {
-    await sequelize.authenticate();
-    health.dbConnected = true;
-  } catch (err) {
-    health.dbConnected = false;
-  }
-
-  try {
-    await redis.ping();
-    health.redisConnected = true;
-  } catch (err) {
-    health.redisConnected = false;
-  }
+  try { await sequelize.authenticate(); health.dbConnected = true; } catch {}
+  try { await redis.ping(); health.redisConnected = true; } catch {}
 
   res.json(health);
 });
 
-// Main routes
 app.use('/webhook', webhookRoutes);
 app.use('/admin', adminRoutes);
-
-// ==============================================
-// ERROR HANDLERS
-// ==============================================
 
 // 404
 app.use((req, res) => {
@@ -134,27 +116,23 @@ const gracefulShutdown = async (signal) => {
 
   const shutdownPromises = [];
 
-  // Close DB
   shutdownPromises.push(
-    sequelize.close().then(() => logger.info('Database connection closed'))
-      .catch(err => logger.error('Error closing DB', { error: err.message }))
+    sequelize.close().then(() => logger.info('Database closed'))
+      .catch(err => logger.error('DB close error', { error: err.message }))
   );
 
-  // Close Redis
   shutdownPromises.push(
-    redis.quit().then(() => logger.info('Redis connection closed'))
-      .catch(err => logger.error('Error closing Redis', { error: err.message }))
+    redis.quit().then(() => logger.info('Redis closed'))
+      .catch(err => logger.error('Redis close error', { error: err.message }))
   );
 
-  // Stop cron
   try {
     cron.stopAll();
     logger.info('Cron jobs stopped');
   } catch (err) {
-    logger.error('Error stopping cron', { error: err.message });
+    logger.error('Cron stop error', { error: err.message });
   }
 
-  // Wait for closures
   await Promise.all(shutdownPromises);
 
   logger.info('Graceful shutdown complete');
@@ -184,9 +162,9 @@ const startServer = async () => {
 
     // Cron jobs
     cron.startAll();
-    logger.info(`✓ Cron jobs started (${cron.getJobCount() || 0} jobs)`);
+    logger.info('✓ Cron jobs started'); // Removed invalid getJobCount()
 
-    // Express server
+    // Server
     app.listen(PORT, () => {
       const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
       const host = process.env.RENDER_EXTERNAL_HOSTNAME || `localhost:${PORT}`;
@@ -208,7 +186,6 @@ const startServer = async () => {
   }
 };
 
-// Run startup
 startServer();
 
 module.exports = app;
