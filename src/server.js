@@ -10,28 +10,38 @@ const redis = require('./config/redis');
 const cron = require('./jobs/cron');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000; // Render uses PORT env var
 
 // ==============================================
-// SECURITY MIDDLEWARE
+// SECURITY & PROXY SETTINGS (Critical for Render)
 // ==============================================
+app.set('trust proxy', 1); // Trust Render's proxy → fixes X-Forwarded-For rate-limit warning
+
 app.use(helmet());
 
-// Rate limiting
-const limiter = rateLimit({
+// Rate limiting - apply globally or per-route
+const globalLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 20,
-  message: 'Too many requests from this IP, please try again later.',
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // higher for general routes
+  message: { error: 'Too many requests, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
-app.use('/webhook', limiter);
+
+const webhookLimiter = rateLimit({
+  windowMs: 60000,
+  max: 50, // WhatsApp can send bursts
+  message: { error: 'Webhook rate limit exceeded' },
+});
+
+app.use(globalLimiter); // Global default
+app.use('/webhook', webhookLimiter); // Tighter for webhook
 
 // ==============================================
 // BODY PARSING
 // ==============================================
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' })); // WhatsApp payloads can be large
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ==============================================
 // REQUEST LOGGING
@@ -39,7 +49,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use((req, res, next) => {
   logger.info(`${req.method} ${req.path}`, {
     ip: req.ip,
-    userAgent: req.get('user-agent')
+    forwardedFor: req.get('x-forwarded-for'),
+    userAgent: req.get('user-agent'),
   });
   next();
 });
@@ -48,23 +59,43 @@ app.use((req, res, next) => {
 // ROUTES
 // ==============================================
 
-// Health check
+// Health check (simple)
 app.get('/', (req, res) => {
   res.json({
     status: 'ok',
-    message: 'UEW WhatsApp Bot API',
+    message: 'UEW WhatsApp Bot API is running',
     version: '1.0.0',
-    timestamp: new Date().toISOString()
+    environment: process.env.NODE_ENV,
+    timestamp: new Date().toISOString(),
   });
 });
 
-app.get('/health', (req, res) => {
-  res.json({
+// Detailed health check
+app.get('/health', async (req, res) => {
+  const health = {
     status: 'ok',
-    timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    env: process.env.NODE_ENV
-  });
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+    dbConnected: false,
+    redisConnected: false,
+  };
+
+  try {
+    await sequelize.authenticate();
+    health.dbConnected = true;
+  } catch (err) {
+    health.dbConnected = false;
+  }
+
+  try {
+    await redis.ping();
+    health.redisConnected = true;
+  } catch (err) {
+    health.redisConnected = false;
+  }
+
+  res.json(health);
 });
 
 // Main routes
@@ -75,12 +106,9 @@ app.use('/admin', adminRoutes);
 // ERROR HANDLERS
 // ==============================================
 
-// 404 handler
+// 404
 app.use((req, res) => {
-  res.status(404).json({
-    error: 'Not found',
-    path: req.path
-  });
+  res.status(404).json({ error: 'Not found', path: req.path });
 });
 
 // Global error handler
@@ -89,12 +117,12 @@ app.use((err, req, res, next) => {
     error: err.message,
     stack: err.stack,
     path: req.path,
-    method: req.method
+    method: req.method,
   });
-  
+
   res.status(err.status || 500).json({
     error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong',
   });
 });
 
@@ -102,26 +130,35 @@ app.use((err, req, res, next) => {
 // GRACEFUL SHUTDOWN
 // ==============================================
 const gracefulShutdown = async (signal) => {
-  logger.info(`${signal} received, shutting down gracefully...`);
-  
+  logger.info(`${signal} received. Shutting down gracefully...`);
+
+  const shutdownPromises = [];
+
+  // Close DB
+  shutdownPromises.push(
+    sequelize.close().then(() => logger.info('Database connection closed'))
+      .catch(err => logger.error('Error closing DB', { error: err.message }))
+  );
+
+  // Close Redis
+  shutdownPromises.push(
+    redis.quit().then(() => logger.info('Redis connection closed'))
+      .catch(err => logger.error('Error closing Redis', { error: err.message }))
+  );
+
+  // Stop cron
   try {
-    // Close database connection
-    await sequelize.close();
-    logger.info('Database connection closed');
-    
-    // Close Redis connection
-    await redis.quit();
-    logger.info('Redis connection closed');
-    
-    // Stop cron jobs
     cron.stopAll();
     logger.info('Cron jobs stopped');
-    
-    process.exit(0);
-  } catch (error) {
-    logger.error('Error during shutdown', { error: error.message });
-    process.exit(1);
+  } catch (err) {
+    logger.error('Error stopping cron', { error: err.message });
   }
+
+  // Wait for closures
+  await Promise.all(shutdownPromises);
+
+  logger.info('Graceful shutdown complete');
+  process.exit(0);
 };
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
@@ -132,43 +169,46 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 // ==============================================
 const startServer = async () => {
   try {
-    // Test database connection
+    // Database
     await sequelize.authenticate();
-    logger.info('✓ Database connection established');
-    
-    // Sync database models (only in development)
+    logger.info('✓ PostgreSQL connection established');
+
     if (process.env.NODE_ENV === 'development') {
       await sequelize.sync({ alter: false });
-      logger.info('✓ Database models synced');
+      logger.info('✓ Database models synced (dev mode)');
     }
-    
-    // Test Redis connection
+
+    // Redis
     await redis.ping();
     logger.info('✓ Redis connection established');
-    
-    // Start cron jobs
+
+    // Cron jobs
     cron.startAll();
-    logger.info('✓ Cron jobs started');
-    
-    // Start Express server
+    logger.info(`✓ Cron jobs started (${cron.getJobCount() || 0} jobs)`);
+
+    // Express server
     app.listen(PORT, () => {
-      logger.info('='.repeat(50));
+      const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+      const host = process.env.RENDER_EXTERNAL_HOSTNAME || `localhost:${PORT}`;
+      const webhookUrl = `${protocol}://${host}/webhook`;
+
+      logger.info('='.repeat(60));
       logger.info(`🚀 Server running on port ${PORT}`);
       logger.info(`📱 Environment: ${process.env.NODE_ENV}`);
-      logger.info(`🌐 Webhook URL: http://localhost:${PORT}/webhook`);
-      logger.info('='.repeat(50));
+      logger.info(`🌐 Webhook URL: ${webhookUrl}`);
+      logger.info(`🔗 Public URL: ${protocol}://${host}`);
+      logger.info('='.repeat(60));
     });
-    
   } catch (error) {
     logger.error('❌ Failed to start server', {
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
     process.exit(1);
   }
 };
 
-// Start the server
+// Run startup
 startServer();
 
 module.exports = app;
